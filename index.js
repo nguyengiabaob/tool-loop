@@ -9,7 +9,7 @@ try {
   chromium = require("@sparticuz/chromium");
   puppeteer = require("puppeteer-core");
 } catch (e) {
-  // Local dev might not have these
+  console.error("Optional dependency load failed:", e.message);
 }
 
 async function scrapeShorts(channelUrl) {
