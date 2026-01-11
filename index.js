@@ -2,202 +2,199 @@ const { Builder, By, Key, until } = require("selenium-webdriver");
 const chrome = require("selenium-webdriver/chrome");
 const fs = require("fs");
 
-// Optional: Dynamic import for local dev to avoid crashing if dependency is missing
-// but since we installed it, standard require is fine.
+// Optional imports for Vercel environment
 let chromium;
+let puppeteer;
 try {
   chromium = require("@sparticuz/chromium");
+  puppeteer = require("puppeteer-core");
 } catch (e) {
-  console.log("Not using sparticuz/chromium (likely local dev)");
+  // Local dev might not have these
 }
 
 async function scrapeShorts(channelUrl) {
-  if (!channelUrl) {
-    throw new Error("Please provide a channel URL");
-  }
-
-  // Ensure URL points to the shorts tab
+  if (!channelUrl) throw new Error("Channel URL is required");
   if (!channelUrl.includes("/shorts")) {
     channelUrl = channelUrl.endsWith("/")
       ? `${channelUrl}shorts`
       : `${channelUrl}/shorts`;
   }
 
-  console.log(`Starting scrape for: ${channelUrl}`);
+  const isProduction =
+    process.env.NODE_ENV === "production" || process.env.VERCEL;
+  console.log(
+    `Starting scrape for: ${channelUrl} (Mode: ${
+      isProduction ? "Puppeteer/Vercel" : "Selenium/Local"
+    })`
+  );
 
-  let driver;
+  if (isProduction) {
+    return await scrapeWithPuppeteer(channelUrl);
+  } else {
+    return await scrapeWithSelenium(channelUrl);
+  }
+}
+
+// --- Puppeteer Implementation (For Vercel) ---
+async function scrapeWithPuppeteer(url) {
+  if (!chromium || !puppeteer) throw new Error("Missing Vercel dependencies");
+
+  // Setup browser
+  const browser = await puppeteer.launch({
+    args: chromium.args,
+    defaultViewport: chromium.defaultViewport,
+    executablePath: await chromium.executablePath(),
+    headless: chromium.headless,
+    ignoreHTTPSErrors: true,
+  });
+
   try {
-    let options = new chrome.Options();
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: "networkidle2" });
 
-    // Check environment
-    const isProduction =
-      process.env.NODE_ENV === "production" || process.env.VERCEL;
-
-    let serviceBuilder;
-
-    if (isProduction && chromium) {
-      console.log("Configuring for Vercel/Lambda environment...");
-      const executablePath = await chromium.executablePath();
-      options.setChromeBinaryPath(executablePath);
-      options.addArguments(...chromium.args);
-      options.addArguments("--headless=new");
-      options.addArguments("--disable-gpu");
-      options.addArguments("--disable-dev-shm-usage");
-      options.addArguments("--no-sandbox");
-      options.addArguments("--single-process");
-
-      try {
-        const originalPath = require("chromedriver").path;
-        // Copy to /tmp to ensure we can set executable permissions (Lambda read-only fix)
-        // Some Lambda envs don't allow execution from node_modules if perms are wrong
-        const tempPath = "/tmp/chromedriver";
-
-        console.log(`Copying chromedriver from ${originalPath} to ${tempPath}`);
-        fs.copyFileSync(originalPath, tempPath);
-        fs.chmodSync(tempPath, 0o755);
-
-        serviceBuilder = new chrome.ServiceBuilder(tempPath);
-        serviceBuilder.setStdio("inherit"); // debug
-      } catch (err) {
-        console.error("Error setting up chromedriver in /tmp:", err);
-      }
-    }
-
-    let builder = new Builder().forBrowser("chrome").setChromeOptions(options);
-
-    if (serviceBuilder) {
-      builder.setChromeService(serviceBuilder);
-    }
-
-    driver = await builder.build();
-
-    // Begin navigation
-    await driver.get(channelUrl);
-
-    // Handle cookie consent if it appears (optional, varies by region)
-    try {
-      // specific selectors might vary; this is a generic catch for common cases
-      const consentButton = await driver.wait(
-        until.elementLocated(
-          By.xpath(
-            '//button[contains(.,"Reject all") or contains(.,"Accept all")]'
-          )
-        ),
-        5000
-      );
-      if (consentButton) await consentButton.click();
-    } catch (e) {
-      // Ignore if no consent popup
-    }
-
-    let lastHeight = await driver.executeScript(
-      "return document.documentElement.scrollHeight"
+    // Handle consent
+    const buttons = await page.$x(
+      '//button[contains(.,"Reject all") or contains(.,"Accept all")]'
     );
-    let videoData = new Set();
+    if (buttons.length > 0) await buttons[0].click();
+
+    let lastHeight = await page.evaluate(
+      "document.documentElement.scrollHeight"
+    );
     let unchangedCount = 0;
+    let videoData = new Map();
 
-    while (true) {
-      // Collect videos currently visible using a more generic approach
-      let anchors = await driver.findElements(By.css('a[href*="/shorts/"]'));
+    // Limit loop for lambda timeout safety (max 20s scrolling)
+    const startTime = Date.now();
 
-      for (let anchor of anchors) {
-        try {
-          let href = await anchor.getAttribute("href");
-          // Avoid duplicates and non-video links (e.g. hashtags if any)
-          if (href && href.includes("/shorts/")) {
-            // Try to find title
-            let title = "Unknown";
-            try {
-              // Strategy 1: Look for #video-title in the same container
-              // Navigate up to find a container
-              let container = await anchor.findElement(
-                By.xpath(
-                  "./ancestor::ytd-rich-grid-slim-media | ./ancestor::ytd-reel-item-renderer | ./ancestor::ytd-rich-item-renderer"
-                )
-              );
-              let titleEl = await container.findElement(
-                By.css("#video-title, #video-title-link")
-              );
-              title = await titleEl.getText();
-            } catch (e) {
-              // Strategy 2: Check aria-label or title attribute on the anchor or img
-              title =
-                (await anchor.getAttribute("title")) ||
-                (await anchor.getAttribute("aria-label"));
-              if (!title) {
-                let img = await anchor.findElement(By.css("img"));
-                title = await img.getAttribute("alt");
-              }
-            }
-
-            // Store unique entry keyed by URL to avoid duplicates in Set
-            // We use a Map logic or just store stringified obj if we handle uniqueness manually
-            // But here videoData is a Set of strings.
-            // Let's check uniqueness of URL only.
-            const exists = Array.from(videoData).some(
-              (j) => JSON.parse(j).url === href
-            );
-            if (!exists) {
-              videoData.add(
-                JSON.stringify({ url: href, title: title || "No Title" })
-              );
-            }
+    while (Date.now() - startTime < 20000) {
+      // Extract
+      const videos = await page.evaluate(() => {
+        const anchors = Array.from(
+          document.querySelectorAll('a[href*="/shorts/"]')
+        );
+        return anchors.map((a) => {
+          let title = a.title || a.getAttribute("aria-label");
+          if (!title) {
+            const tEl = a.querySelector("#video-title");
+            if (tEl) title = tEl.innerText;
           }
-        } catch (err) {
-          // unexpected element state, skip
-        }
-      }
-      console.log(`Collected ${videoData.size} unique videos so far...`);
+          return { url: a.href, title: title || "Unknown" };
+        });
+      });
 
-      // Scroll down
-      await driver.executeScript(
-        "window.scrollTo(0, document.documentElement.scrollHeight);"
+      videos.forEach((v) => {
+        if (v.url.includes("/shorts/")) videoData.set(v.url, v);
+      });
+
+      // Scroll
+      await page.evaluate(
+        "window.scrollTo(0, document.documentElement.scrollHeight)"
       );
+      await new Promise((r) => setTimeout(r, 1500));
 
-      // Wait for load
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      let newHeight = await driver.executeScript(
-        "return document.documentElement.scrollHeight"
+      let newHeight = await page.evaluate(
+        "document.documentElement.scrollHeight"
       );
-
       if (newHeight === lastHeight) {
         unchangedCount++;
-        if (unchangedCount > 3) {
-          console.log("Reached end of page or no new content loading.");
-          break;
-        }
+        if (unchangedCount > 2) break;
       } else {
         unchangedCount = 0;
         lastHeight = newHeight;
       }
     }
 
-    if (videoData.size === 0) {
-      console.log("No videos found. Dumping page source to debug.html");
-      const html = await driver.getPageSource();
-      fs.writeFileSync("debug.html", html);
+    return Array.from(videoData.values());
+  } finally {
+    await browser.close();
+  }
+}
+
+// --- Selenium Implementation (For Local) ---
+async function scrapeWithSelenium(url) {
+  let options = new chrome.Options();
+  // options.addArguments('--headless=new'); // uncomment for headless local
+
+  let driver = await new Builder()
+    .forBrowser("chrome")
+    .setChromeOptions(options)
+    .build();
+
+  try {
+    await driver.get(url);
+
+    // Consent
+    try {
+      const btn = await driver.wait(
+        until.elementLocated(
+          By.xpath(
+            '//button[contains(.,"Reject all") or contains(.,"Accept all")]'
+          )
+        ),
+        3000
+      );
+      await btn.click();
+    } catch (e) {}
+
+    let lastHeight = await driver.executeScript(
+      "return document.documentElement.scrollHeight"
+    );
+    let videoData = new Map();
+    let unchangedCount = 0;
+
+    while (true) {
+      let anchors = await driver.findElements(By.css('a[href*="/shorts/"]'));
+      for (let a of anchors) {
+        try {
+          let href = await a.getAttribute("href");
+          if (href && !videoData.has(href)) {
+            let title =
+              (await a.getAttribute("title")) ||
+              (await a.getAttribute("aria-label"));
+            if (!title) {
+              try {
+                let p = await a.findElement(
+                  By.xpath("./ancestor::ytd-rich-grid-slim-media")
+                );
+                let tEl = await p.findElement(By.css("#video-title"));
+                title = await tEl.getText();
+              } catch (e) {}
+            }
+            videoData.set(href, { url: href, title: title || "Unknown" });
+          }
+        } catch (e) {}
+      }
+
+      await driver.executeScript(
+        "window.scrollTo(0, document.documentElement.scrollHeight);"
+      );
+      await new Promise((r) => setTimeout(r, 2000));
+
+      let newHeight = await driver.executeScript(
+        "return document.documentElement.scrollHeight"
+      );
+      if (newHeight === lastHeight) {
+        unchangedCount++;
+        if (unchangedCount > 3) break;
+      } else {
+        unchangedCount = 0;
+        lastHeight = newHeight;
+      }
     }
 
-    const results = Array.from(videoData).map((item) => JSON.parse(item));
-    fs.writeFileSync("shorts.json", JSON.stringify(results, null, 2));
-    console.log(`Successfully saved ${results.length} videos to shorts.json`);
-    return results;
-  } catch (error) {
-    console.error("An error occurred:", error);
-    if (driver) {
-      const html = await driver.getPageSource();
-      fs.writeFileSync("error_debug.html", html);
-    }
-    throw error;
+    return Array.from(videoData.values());
   } finally {
-    if (driver) await driver.quit();
+    await driver.quit();
   }
 }
 
 if (require.main === module) {
   const args = process.argv.slice(2);
-  scrapeShorts(args[0]);
+  scrapeShorts(args[0]).then((res) => {
+    console.log(`Scraped ${res.length} videos`);
+    fs.writeFileSync("shorts.json", JSON.stringify(res, null, 2));
+  });
 
   process.on("SIGINT", async () => {
     console.log("\nGracefully shutting down...");
