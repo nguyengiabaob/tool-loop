@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ToolyTube - Shorts Scraper</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>ToolyTube</h1>
+        <p>Paste a YouTube Channel URL to scrape Shorts links.</p>
+      </header>
+
+      <main>
+        <div class="input-group">
+          <input
+            type="text"
+            id="urlInput"
+            placeholder="https://www.youtube.com/@ChannelName"
+          />
+          <button id="scrapeBtn">Scrape</button>
+        </div>
+
+        <div id="status" class="status hidden"></div>
+
+        <div id="results" class="results-container hidden">
+          <h2>Results (<span id="count">0</span>)</h2>
+          <div class="actions">
+            <button id="downloadBtn" class="secondary-btn">
+              Download JSON
+            </button>
+            <button
+              id="watchBtn"
+              class="secondary-btn"
+              style="background-color: #4caf50; margin-left: 10px"
+            >
+              Auto Watch Loop
+            </button>
+          </div>
+          <ul id="videoList"></ul>
+        </div>
+      </main>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>
