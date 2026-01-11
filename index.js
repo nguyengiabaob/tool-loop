@@ -51,6 +51,17 @@ async function scrapeShorts(channelUrl) {
         console.log(
           `Setting chromedriver service path to: ${chromedriverPath}`
         );
+        // Fix permissions for Vercel/Lambda
+        if (fs.existsSync(chromedriverPath)) {
+          try {
+            fs.chmodSync(chromedriverPath, 0o755);
+          } catch (e) {
+            console.error("Chmod failed", e);
+          }
+        } else {
+          console.error("Chromedriver binary NOT found at path!");
+        }
+
         serviceBuilder = new chrome.ServiceBuilder(chromedriverPath);
       } catch (err) {
         console.error("Error setting up ServiceBuilder:", err);
