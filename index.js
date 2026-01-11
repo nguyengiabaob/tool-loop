@@ -47,24 +47,19 @@ async function scrapeShorts(channelUrl) {
       options.addArguments("--single-process");
 
       try {
-        const chromedriverPath = require("chromedriver").path;
-        console.log(
-          `Setting chromedriver service path to: ${chromedriverPath}`
-        );
-        // Fix permissions for Vercel/Lambda
-        if (fs.existsSync(chromedriverPath)) {
-          try {
-            fs.chmodSync(chromedriverPath, 0o755);
-          } catch (e) {
-            console.error("Chmod failed", e);
-          }
-        } else {
-          console.error("Chromedriver binary NOT found at path!");
-        }
+        const originalPath = require("chromedriver").path;
+        // Copy to /tmp to ensure we can set executable permissions (Lambda read-only fix)
+        // Some Lambda envs don't allow execution from node_modules if perms are wrong
+        const tempPath = "/tmp/chromedriver";
 
-        serviceBuilder = new chrome.ServiceBuilder(chromedriverPath);
+        console.log(`Copying chromedriver from ${originalPath} to ${tempPath}`);
+        fs.copyFileSync(originalPath, tempPath);
+        fs.chmodSync(tempPath, 0o755);
+
+        serviceBuilder = new chrome.ServiceBuilder(tempPath);
+        serviceBuilder.setStdio("inherit"); // debug
       } catch (err) {
-        console.error("Error setting up ServiceBuilder:", err);
+        console.error("Error setting up chromedriver in /tmp:", err);
       }
     }
 
