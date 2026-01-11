@@ -33,6 +33,8 @@ async function scrapeShorts(channelUrl) {
     const isProduction =
       process.env.NODE_ENV === "production" || process.env.VERCEL;
 
+    let serviceBuilder;
+
     if (isProduction && chromium) {
       console.log("Configuring for Vercel/Lambda environment...");
       const executablePath = await chromium.executablePath();
@@ -43,12 +45,25 @@ async function scrapeShorts(channelUrl) {
       options.addArguments("--disable-dev-shm-usage");
       options.addArguments("--no-sandbox");
       options.addArguments("--single-process");
+
+      try {
+        const chromedriverPath = require("chromedriver").path;
+        console.log(
+          `Setting chromedriver service path to: ${chromedriverPath}`
+        );
+        serviceBuilder = new chrome.ServiceBuilder(chromedriverPath);
+      } catch (err) {
+        console.error("Error setting up ServiceBuilder:", err);
+      }
     }
 
-    driver = await new Builder()
-      .forBrowser("chrome")
-      .setChromeOptions(options)
-      .build();
+    let builder = new Builder().forBrowser("chrome").setChromeOptions(options);
+
+    if (serviceBuilder) {
+      builder.setChromeService(serviceBuilder);
+    }
+
+    driver = await builder.build();
 
     // Begin navigation
     await driver.get(channelUrl);
