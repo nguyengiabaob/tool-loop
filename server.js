@@ -9,6 +9,10 @@ const { watchLoop } = require("./watch");
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
 app.post("/api/watch", async (req, res) => {
   const { videos } = req.body;
   if (!videos || !Array.isArray(videos) || videos.length === 0) {

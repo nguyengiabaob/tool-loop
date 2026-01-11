@@ -33,21 +33,37 @@ async function scrapeShorts(channelUrl) {
     const isProduction =
       process.env.NODE_ENV === "production" || process.env.VERCEL;
 
+    let serviceBuilder;
+
     if (isProduction && chromium) {
       console.log("Configuring for Vercel/Lambda environment...");
       options.setChromeBinaryPath(await chromium.executablePath());
       options.addArguments(...chromium.args);
       options.addArguments("--headless=new");
       options.addArguments("--disable-gpu");
+      options.addArguments("--disable-dev-shm-usage");
+      options.addArguments("--no-sandbox");
+
+      // Critical: Set the chromedriver service path explicitly
+      try {
+        const chromedriverPath = require("chromedriver").path;
+        serviceBuilder = new chrome.ServiceBuilder(chromedriverPath);
+        console.log(`Using ChromeDriver at: ${chromedriverPath}`);
+      } catch (e) {
+        console.error("Could not find chromedriver via 'require'", e);
+      }
     } else {
       // Local dev: might want visible window or standard headless
       // options.addArguments('--headless=new'); // Uncomment if you want headless locally too
     }
 
-    driver = await new Builder()
-      .forBrowser("chrome")
-      .setChromeOptions(options)
-      .build();
+    let builder = new Builder().forBrowser("chrome").setChromeOptions(options);
+
+    if (serviceBuilder) {
+      builder.setChromeService(serviceBuilder);
+    }
+
+    driver = await builder.build();
 
     // Begin navigation
     await driver.get(channelUrl);
