@@ -2,15 +2,9 @@ const { Builder, By, Key, until } = require("selenium-webdriver");
 const chrome = require("selenium-webdriver/chrome");
 const fs = require("fs");
 
-// Optional imports for Vercel environment
-let chromium;
-let puppeteer;
-try {
-  chromium = require("@sparticuz/chromium");
-  puppeteer = require("puppeteer-core");
-} catch (e) {
-  console.error("Optional dependency load failed:", e.message);
-}
+// Required for Vercel/Production
+const chromium = require("@sparticuz/chromium");
+const puppeteer = require("puppeteer-core");
 
 async function scrapeShorts(channelUrl) {
   if (!channelUrl) throw new Error("Channel URL is required");
