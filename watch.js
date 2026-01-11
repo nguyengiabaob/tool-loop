@@ -12,6 +12,7 @@ async function watchLoop(videoUrls) {
   try {
     //
     //
+    //
     let index = 0;
     let direction = 1; // 1 for forward, -1 for backward
 
