@@ -10,6 +10,7 @@ async function watchLoop(videoUrls) {
   console.log("Starting Auto Watch Loop...");
 
   try {
+    //
     let index = 0;
     let direction = 1; // 1 for forward, -1 for backward
 
