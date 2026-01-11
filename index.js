@@ -47,10 +47,21 @@ async function scrapeWithPuppeteer(url) {
     await page.goto(url, { waitUntil: "networkidle2" });
 
     // Handle consent
-    const buttons = await page.$x(
-      '//button[contains(.,"Reject all") or contains(.,"Accept all")]'
-    );
-    if (buttons.length > 0) await buttons[0].click();
+    // Handle consent
+    try {
+      await page.evaluate(() => {
+        const buttons = document.evaluate(
+          '//button[contains(.,"Reject all") or contains(.,"Accept all")]',
+          document,
+          null,
+          XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
+          null
+        );
+        if (buttons.snapshotLength > 0) {
+          buttons.snapshotItem(0).click();
+        }
+      });
+    } catch (e) {}
 
     let lastHeight = await page.evaluate(
       "document.documentElement.scrollHeight"
