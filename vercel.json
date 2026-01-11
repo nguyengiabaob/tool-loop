@@ -12,7 +12,10 @@
       "dest": "/server.js"
     }
   ],
-  "env": {
-    "AWS_LAMBDA_FUNCTION_MEMORY_SIZE": "1024"
+  "functions": {
+    "server.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    }
   }
 }
