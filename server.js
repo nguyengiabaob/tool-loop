@@ -6,7 +6,7 @@ const port = 3000;
 
 const { watchLoop } = require("./watch");
 
-app.use(express.static("public"));
+app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 
 app.post("/api/watch", async (req, res) => {
