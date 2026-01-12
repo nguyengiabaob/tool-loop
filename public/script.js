@@ -55,11 +55,14 @@ document.getElementById("scrapeBtn").addEventListener("click", async () => {
       };
 
       document.getElementById("watchBtn").onclick = async () => {
-        if (
-          confirm(
-            "This will open a Chrome window on the server/host machine to watch these videos in a loop. Continue?"
-          )
-        ) {
+        // Optimistic check: simplified prompt
+        const confirmMsg =
+          "This attempts to start a Watch Loop.\n\n" +
+          "• Localhost: Opens a Chrome window on your machine controlled by Selenium.\n" +
+          "• Vercel/Cloud: Will create a Playlist in a new tab (Client-side).\n\n" +
+          "Continue?";
+
+        if (confirm(confirmMsg)) {
           try {
             const wRes = await fetch("/api/watch", {
               method: "POST",
@@ -67,8 +70,30 @@ document.getElementById("scrapeBtn").addEventListener("click", async () => {
               body: JSON.stringify({ videos: result.data }),
             });
             const wJson = await wRes.json();
+
             if (wJson.success) {
-              alert("Watch loop started!");
+              alert("Watch loop started on host machine successfully!");
+            } else if (wJson.code === "NO_SERVER_DISPLAY") {
+              // Fallback to Playlist
+              const videoIds = result.data
+                .map((v) => {
+                  const url = v.url || v;
+                  const match = url.match(/\/shorts\/([^/?]+)/);
+                  return match ? match[1] : null;
+                })
+                .filter((id) => id);
+
+              if (videoIds.length > 0) {
+                const playlistUrl = `https://www.youtube.com/watch_videos?video_ids=${videoIds.join(
+                  ","
+                )}`;
+                window.open(playlistUrl, "_blank");
+                alert(
+                  "Opened as a Playlist (Vercel mode).\nYou can loop the playlist using the YouTube player controls."
+                );
+              } else {
+                alert("Could not extract video IDs for playlist.");
+              }
             } else {
               alert("Failed to start: " + wJson.error);
             }
