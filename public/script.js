@@ -74,7 +74,7 @@ document.getElementById("scrapeBtn").addEventListener("click", async () => {
             if (wJson.success) {
               alert("Watch loop started on host machine successfully!");
             } else if (wJson.code === "NO_SERVER_DISPLAY") {
-              // Fallback to Playlist
+              // Fallback to Playlist (Client-side)
               const videoIds = result.data
                 .map((v) => {
                   const url = v.url || v;
@@ -84,12 +84,15 @@ document.getElementById("scrapeBtn").addEventListener("click", async () => {
                 .filter((id) => id);
 
               if (videoIds.length > 0) {
-                const playlistUrl = `https://www.youtube.com/watch_videos?video_ids=${videoIds.join(
-                  ","
-                )}`;
+                // Use Embed URL to force looping
+                // Format: https://www.youtube.com/embed/{FIRST_ID}?playlist={ALL_IDS}&loop=1&autoplay=1
+                const firstId = videoIds[0];
+                const playlistIds = videoIds.join(",");
+                const playlistUrl = `https://www.youtube.com/embed/${firstId}?playlist=${playlistIds}&loop=1&autoplay=1`;
+
                 window.open(playlistUrl, "_blank");
                 alert(
-                  "Opened as a Playlist (Vercel mode).\nYou can loop the playlist using the YouTube player controls."
+                  "Opened a looped Playlist (Vercel mode).\nNote: This uses the Embed player to support auto-looping."
                 );
               } else {
                 alert("Could not extract video IDs for playlist.");

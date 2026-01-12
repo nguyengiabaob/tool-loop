@@ -85,18 +85,12 @@ async function watchLoop(videoUrls) {
         await new Promise((resolve) => setTimeout(resolve, 2000)); // Brief pause on error
       }
 
-      // 5. Calculate next index (Ping-Pong / Reverse Logic)
+      // 5. Calculate next index (Circular Loop)
       if (videoUrls.length > 1) {
-        index += direction;
-
+        index++;
         if (index >= videoUrls.length) {
-          index = videoUrls.length - 2;
-          direction = -1;
-          console.log("Reached end. Reversing direction -> Backward");
-        } else if (index < 0) {
-          index = 1;
-          direction = 1;
-          console.log("Reached start. Reversing direction -> Forward");
+          index = 0;
+          console.log("Reached end. Restarting from beginning.");
         }
       } else {
         // If only 1 video, just loop it?
