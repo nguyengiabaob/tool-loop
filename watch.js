@@ -1,4 +1,6 @@
 const { Builder, By, Key, until } = require("selenium-webdriver");
+const chrome = require("selenium-webdriver/chrome");
+require("chromedriver"); // Ensure chromedriver is picked up
 
 async function watchLoop(videoUrls) {
   if (!videoUrls || videoUrls.length === 0) {
@@ -6,13 +8,27 @@ async function watchLoop(videoUrls) {
     return;
   }
 
-  let driver = await new Builder().forBrowser("chrome").build();
-  console.log("Starting Auto Watch Loop...");
+  console.log("Initializing Auto Watch Loop (Selenium)...");
+  let driver;
 
   try {
-    //
-    //
-    //
+    let options = new chrome.Options();
+    // Ensure we are NOT headless. Start maximized for visibility.
+    options.addArguments("--start-maximized");
+    // options.addArguments("--auth-server-whitelist=_"); // Sometimes helps with some issues
+
+    driver = await new Builder()
+      .forBrowser("chrome")
+      .setChromeOptions(options)
+      .build();
+
+    console.log("Driver initialized successfully.");
+  } catch (err) {
+    console.error("Failed to initialize Selenium driver:", err);
+    return;
+  }
+
+  try {
     let index = 0;
     let direction = 1; // 1 for forward, -1 for backward
 
@@ -85,12 +101,17 @@ async function watchLoop(videoUrls) {
       } else {
         // If only 1 video, just loop it?
         // The loop automatically re-runs execute logic, effectively looping it.
+        // Add a small pause to prevent hammering if something is broken
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
   } catch (error) {
     console.error("Watch loop error:", error);
   } finally {
-    await driver.quit();
+    if (driver) {
+      console.log("Closing driver...");
+      await driver.quit();
+    }
   }
 }
 
